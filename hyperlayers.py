@@ -4,9 +4,11 @@ import torch.nn as nn
 from pytorch_prototyping import pytorch_prototyping
 import functools
 
+# set device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 def partialclass(cls, *args, **kwds):
-
     class NewCls(cls):
         __init__ = functools.partialmethod(cls.__init__, *args, **kwds)
 
@@ -18,20 +20,15 @@ class LookupLayer(nn.Module):
         super().__init__()
 
         self.out_ch = out_ch
-        self.lookup_lin = LookupLinear(in_ch,
-                                       out_ch,
-                                       num_objects=num_objects)
+        self.lookup_lin = LookupLinear(in_ch, out_ch, num_objects=num_objects)
         self.norm_nl = nn.Sequential(
             nn.LayerNorm([self.out_ch], elementwise_affine=False),
-            nn.ReLU(inplace=True)
-        )
+            nn.ReLU(inplace=True))
 
     def forward(self, obj_idx):
-        net = nn.Sequential(
-            self.lookup_lin(obj_idx),
-            self.norm_nl
-        )
+        net = nn.Sequential(self.lookup_lin(obj_idx), self.norm_nl)
         return net
+
 
 class LookupFC(nn.Module):
     def __init__(self,
@@ -43,15 +40,26 @@ class LookupFC(nn.Module):
                  outermost_linear=False):
         super().__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(LookupLayer(in_ch=in_ch, out_ch=hidden_ch, num_objects=num_objects))
+        self.layers.append(
+            LookupLayer(in_ch=in_ch, out_ch=hidden_ch,
+                        num_objects=num_objects))
 
         for i in range(num_hidden_layers):
-            self.layers.append(LookupLayer(in_ch=hidden_ch, out_ch=hidden_ch, num_objects=num_objects))
+            self.layers.append(
+                LookupLayer(in_ch=hidden_ch,
+                            out_ch=hidden_ch,
+                            num_objects=num_objects))
 
         if outermost_linear:
-            self.layers.append(LookupLinear(in_ch=hidden_ch, out_ch=out_ch, num_objects=num_objects))
+            self.layers.append(
+                LookupLinear(in_ch=hidden_ch,
+                             out_ch=out_ch,
+                             num_objects=num_objects))
         else:
-            self.layers.append(LookupLayer(in_ch=hidden_ch, out_ch=out_ch, num_objects=num_objects))
+            self.layers.append(
+                LookupLayer(in_ch=hidden_ch,
+                            out_ch=out_ch,
+                            num_objects=num_objects))
 
     def forward(self, obj_idx):
         net = []
@@ -62,10 +70,7 @@ class LookupFC(nn.Module):
 
 
 class LookupLinear(nn.Module):
-    def __init__(self,
-                 in_ch,
-                 out_ch,
-                 num_objects):
+    def __init__(self, in_ch, out_ch, num_objects):
         super().__init__()
         self.in_ch = in_ch
         self.out_ch = out_ch
@@ -73,18 +78,24 @@ class LookupLinear(nn.Module):
         self.hypo_params = nn.Embedding(num_objects, in_ch * out_ch + out_ch)
 
         for i in range(num_objects):
-            nn.init.kaiming_normal_(self.hypo_params.weight.data[i, :self.in_ch * self.out_ch].view(self.out_ch, self.in_ch),
-                                    a=0.0,
-                                    nonlinearity='relu',
-                                    mode='fan_in')
-            self.hypo_params.weight.data[i, self.in_ch * self.out_ch:].fill_(0.)
+            nn.init.kaiming_normal_(
+                self.hypo_params.weight.data[i, :self.in_ch *
+                                             self.out_ch].view(
+                                                 self.out_ch, self.in_ch),
+                a=0.0,
+                nonlinearity='relu',
+                mode='fan_in')
+            self.hypo_params.weight.data[i,
+                                         self.in_ch * self.out_ch:].fill_(0.)
 
     def forward(self, obj_idx):
         hypo_params = self.hypo_params(obj_idx)
 
         # Indices explicit to catch erros in shape of output layer
         weights = hypo_params[..., :self.in_ch * self.out_ch]
-        biases = hypo_params[..., self.in_ch * self.out_ch:(self.in_ch * self.out_ch)+self.out_ch]
+        biases = hypo_params[..., self.in_ch *
+                             self.out_ch:(self.in_ch * self.out_ch) +
+                             self.out_ch]
 
         biases = biases.view(*(biases.size()[:-1]), 1, self.out_ch)
         weights = weights.view(*(weights.size()[:-1]), self.out_ch, self.in_ch)
@@ -94,23 +105,19 @@ class LookupLinear(nn.Module):
 
 class HyperLayer(nn.Module):
     '''A hypernetwork that predicts a single Dense Layer, including LayerNorm and a ReLU.'''
-    def __init__(self,
-                 in_ch,
-                 out_ch,
-                 hyper_in_ch,
-                 hyper_num_hidden_layers,
+    def __init__(self, in_ch, out_ch, hyper_in_ch, hyper_num_hidden_layers,
                  hyper_hidden_ch):
         super().__init__()
 
-        self.hyper_linear = HyperLinear(in_ch=in_ch,
-                                        out_ch=out_ch,
-                                        hyper_in_ch=hyper_in_ch,
-                                        hyper_num_hidden_layers=hyper_num_hidden_layers,
-                                        hyper_hidden_ch=hyper_hidden_ch)
+        self.hyper_linear = HyperLinear(
+            in_ch=in_ch,
+            out_ch=out_ch,
+            hyper_in_ch=hyper_in_ch,
+            hyper_num_hidden_layers=hyper_num_hidden_layers,
+            hyper_hidden_ch=hyper_hidden_ch)
         self.norm_nl = nn.Sequential(
             nn.LayerNorm([out_ch], elementwise_affine=False),
-            nn.ReLU(inplace=True)
-        )
+            nn.ReLU(inplace=True))
 
     def forward(self, hyper_input):
         '''
@@ -134,26 +141,30 @@ class HyperFC(nn.Module):
                  outermost_linear=False):
         super().__init__()
 
-        PreconfHyperLinear = partialclass(HyperLinear,
-                                          hyper_in_ch=hyper_in_ch,
-                                          hyper_num_hidden_layers=hyper_num_hidden_layers,
-                                          hyper_hidden_ch=hyper_hidden_ch)
-        PreconfHyperLayer = partialclass(HyperLayer,
-                                          hyper_in_ch=hyper_in_ch,
-                                          hyper_num_hidden_layers=hyper_num_hidden_layers,
-                                          hyper_hidden_ch=hyper_hidden_ch)
+        PreconfHyperLinear = partialclass(
+            HyperLinear,
+            hyper_in_ch=hyper_in_ch,
+            hyper_num_hidden_layers=hyper_num_hidden_layers,
+            hyper_hidden_ch=hyper_hidden_ch)
+        PreconfHyperLayer = partialclass(
+            HyperLayer,
+            hyper_in_ch=hyper_in_ch,
+            hyper_num_hidden_layers=hyper_num_hidden_layers,
+            hyper_hidden_ch=hyper_hidden_ch)
 
         self.layers = nn.ModuleList()
         self.layers.append(PreconfHyperLayer(in_ch=in_ch, out_ch=hidden_ch))
 
         for i in range(num_hidden_layers):
-            self.layers.append(PreconfHyperLayer(in_ch=hidden_ch, out_ch=hidden_ch))
+            self.layers.append(
+                PreconfHyperLayer(in_ch=hidden_ch, out_ch=hidden_ch))
 
         if outermost_linear:
-            self.layers.append(PreconfHyperLinear(in_ch=hidden_ch, out_ch=out_ch))
+            self.layers.append(
+                PreconfHyperLinear(in_ch=hidden_ch, out_ch=out_ch))
         else:
-            self.layers.append(PreconfHyperLayer(in_ch=hidden_ch, out_ch=out_ch))
-
+            self.layers.append(
+                PreconfHyperLayer(in_ch=hidden_ch, out_ch=out_ch))
 
     def forward(self, hyper_input):
         '''
@@ -168,9 +179,7 @@ class HyperFC(nn.Module):
 
 
 class BatchLinear(nn.Module):
-    def __init__(self,
-                 weights,
-                 biases):
+    def __init__(self, weights, biases):
         '''Implements a batch linear layer.
 
         :param weights: Shape: (batch, out_ch, in_ch)
@@ -182,49 +191,53 @@ class BatchLinear(nn.Module):
         self.biases = biases
 
     def __repr__(self):
-        return "BatchLinear(in_ch=%d, out_ch=%d)"%(self.weights.shape[-1], self.weights.shape[-2])
+        return "BatchLinear(in_ch=%d, out_ch=%d)" % (self.weights.shape[-1],
+                                                     self.weights.shape[-2])
 
     def forward(self, input):
-        output = input.matmul(self.weights.permute(*[i for i in range(len(self.weights.shape)-2)], -1, -2))
+        output = input.matmul(
+            self.weights.permute(
+                *[i for i in range(len(self.weights.shape) - 2)], -1, -2))
         output += self.biases
         return output
 
 
 def last_hyper_layer_init(m):
     if type(m) == nn.Linear:
-        nn.init.kaiming_normal_(m.weight, a=0.0, nonlinearity='relu', mode='fan_in')
+        nn.init.kaiming_normal_(m.weight,
+                                a=0.0,
+                                nonlinearity='relu',
+                                mode='fan_in')
         m.weight.data *= 1e-1
 
 
 class HyperLinear(nn.Module):
     '''A hypernetwork that predicts a single linear layer (weights & biases).'''
-    def __init__(self,
-                 in_ch,
-                 out_ch,
-                 hyper_in_ch,
-                 hyper_num_hidden_layers,
+    def __init__(self, in_ch, out_ch, hyper_in_ch, hyper_num_hidden_layers,
                  hyper_hidden_ch):
 
         super().__init__()
         self.in_ch = in_ch
         self.out_ch = out_ch
 
-        self.hypo_params = pytorch_prototyping.FCBlock(in_features=hyper_in_ch,
-                                                        hidden_ch=hyper_hidden_ch,
-                                                        num_hidden_layers=hyper_num_hidden_layers,
-                                                        out_features=(in_ch * out_ch) + out_ch,
-                                                        outermost_linear=True)
+        self.hypo_params = pytorch_prototyping.FCBlock(
+            in_features=hyper_in_ch,
+            hidden_ch=hyper_hidden_ch,
+            num_hidden_layers=hyper_num_hidden_layers,
+            out_features=(in_ch * out_ch) + out_ch,
+            outermost_linear=True)
         self.hypo_params[-1].apply(last_hyper_layer_init)
 
     def forward(self, hyper_input):
-        hypo_params = self.hypo_params(hyper_input.cuda())
+        hypo_params = self.hypo_params(hyper_input.to(device))
 
         # Indices explicit to catch erros in shape of output layer
         weights = hypo_params[..., :self.in_ch * self.out_ch]
-        biases = hypo_params[..., self.in_ch * self.out_ch:(self.in_ch * self.out_ch)+self.out_ch]
+        biases = hypo_params[..., self.in_ch *
+                             self.out_ch:(self.in_ch * self.out_ch) +
+                             self.out_ch]
 
         biases = biases.view(*(biases.size()[:-1]), 1, self.out_ch)
         weights = weights.view(*(weights.size()[:-1]), self.out_ch, self.in_ch)
 
         return BatchLinear(weights=weights, biases=biases)
-
