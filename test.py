@@ -45,7 +45,8 @@ p.add_argument('--embedding_size', type=int, default=256,
 
 opt = p.parse_args()
 
-device = torch.device('cuda')
+# set device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def test():
@@ -80,7 +81,7 @@ def test():
                      overwrite_embeddings=False)
 
     model.eval()
-    model.cuda()
+    model.to(device)
 
     # directory structure: month_day/
     renderings_dir = os.path.join(opt.logging_root, 'renderings')
