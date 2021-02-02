@@ -73,8 +73,9 @@ p.add_argument(
 p.add_argument(
     '--reg_weight',
     type=float,
-    default=1e-3,
+    default=1e-1,
     help='Weight for depth regularization term (lambda_depth in paper).')
+p.add_argument('--depth_weight', type=float, default=2000)
 
 p.add_argument('--steps_til_ckpt',
                type=int,
@@ -302,29 +303,32 @@ def train():
                 optimizer.zero_grad()
 
                 dist_loss = model.get_image_loss(model_outputs, ground_truth)
+                depth_loss = model.get_depth_loss(model_outputs, ground_truth)
                 reg_loss = model.get_regularization_loss(
                     model_outputs, ground_truth)
                 latent_loss = model.get_latent_loss()
 
                 weighted_dist_loss = opt.l1_weight * dist_loss
+                weighted_depth_loss = opt.depth_weight * depth_loss
                 weighted_reg_loss = opt.reg_weight * reg_loss
                 weighted_latent_loss = opt.kl_weight * latent_loss
 
-                total_loss = (weighted_dist_loss + weighted_reg_loss +
-                              weighted_latent_loss)
+                total_loss = (weighted_dist_loss + weighted_depth_loss +
+                              weighted_reg_loss + weighted_latent_loss)
 
                 total_loss.backward()
 
                 optimizer.step()
 
                 print(
-                    "Iter %07d   Epoch %03d   L_img %0.4f   L_latent %0.4f   L_depth %0.4f"
-                    % (iter, epoch, weighted_dist_loss, weighted_latent_loss,
-                       weighted_reg_loss))
+                    "Iter %07d   Epoch %03d   L_img %0.4f   L_depth %0.4f   L_latent %0.4f   L_reg %0.4f"
+                    % (iter, epoch, weighted_dist_loss, weighted_depth_loss,
+                       weighted_latent_loss, weighted_reg_loss))
 
                 model.write_updates(writer, model_outputs, ground_truth, iter)
                 writer.add_scalar("scaled_distortion_loss", weighted_dist_loss,
                                   iter)
+                writer.add_scalar("depth_loss", weighted_depth_loss, iter)
                 writer.add_scalar("scaled_regularization_loss",
                                   weighted_reg_loss, iter)
                 writer.add_scalar("scaled_latent_loss", weighted_latent_loss,

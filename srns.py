@@ -106,7 +106,7 @@ class SRNsModel(nn.Module):
         neg_penalty = (torch.min(depth, torch.zeros_like(depth))**2)
         return torch.mean(neg_penalty) * 10000
 
-    def get_image_loss(self, prediction, ground_truth):
+    def get_image_loss(self, prediction, ground_truth, depth_loss=True):
         """Computes loss on predicted image (L_{img} in eq. 6 in paper)
 
         :param prediction (tuple): Output of forward pass.
@@ -119,6 +119,26 @@ class SRNsModel(nn.Module):
         trgt_imgs = trgt_imgs.to(device)
 
         loss = self.l2_loss(pred_imgs, trgt_imgs)
+
+        return loss
+
+    def get_depth_loss(self, prediction, ground_truth):
+
+        _, pred_depth = prediction
+        gt_depth = ground_truth['depth']
+
+        pred_depth = pred_depth.to(device)
+
+        loss = torch.tensor(0)
+
+        # disregard pixels with 0 in ground-truth
+        for i, elem in enumerate(gt_depth):
+            relevant_gt_depth = elem.squeeze()[elem.squeeze().nonzero(
+                as_tuple=True)]
+            relevant_pred_depth = pred_depth[i].squeeze()[
+                elem.squeeze().nonzero(as_tuple=True)]
+            loss = loss + self.l2_loss(relevant_gt_depth, relevant_pred_depth)
+
         return loss
 
     def get_latent_loss(self):

@@ -26,6 +26,7 @@ class SceneInstanceDataset():
         self.instance_dir = instance_dir
 
         color_dir = os.path.join(instance_dir, "rgb")
+        depth_dir = os.path.join(instance_dir, "depth")
         pose_dir = os.path.join(instance_dir, "pose")
         param_dir = os.path.join(instance_dir, "params")
 
@@ -35,6 +36,7 @@ class SceneInstanceDataset():
 
         self.has_params = os.path.isdir(param_dir)
         self.color_paths = sorted(data_util.glob_imgs(color_dir))
+        self.depth_paths = sorted(data_util.glob_imgs(depth_dir))
         self.pose_paths = sorted(glob(os.path.join(pose_dir, "*.txt")))
 
         if self.has_params:
@@ -44,6 +46,8 @@ class SceneInstanceDataset():
 
         if specific_observation_idcs is not None:
             self.color_paths = pick(self.color_paths,
+                                    specific_observation_idcs)
+            self.depth_paths = pick(self.depth_paths,
                                     specific_observation_idcs)
             self.pose_paths = pick(self.pose_paths, specific_observation_idcs)
             self.param_paths = pick(self.param_paths,
@@ -55,6 +59,7 @@ class SceneInstanceDataset():
                                endpoint=False,
                                dtype=int)
             self.color_paths = pick(self.color_paths, idcs)
+            self.depth_paths = pick(self.depth_paths, idcs)
             self.pose_paths = pick(self.pose_paths, idcs)
             self.param_paths = pick(self.param_paths, idcs)
 
@@ -71,10 +76,17 @@ class SceneInstanceDataset():
             trgt_sidelength=self.img_sidelength)
         intrinsics = torch.Tensor(intrinsics).float()
 
+        # rbg
         rgb = data_util.load_rgb(self.color_paths[idx],
                                  sidelength=self.img_sidelength)
         rgb = rgb.reshape(3, -1).transpose(1, 0)
 
+        # depth
+        depth = data_util.load_depth(self.depth_paths[idx],
+                                     sidelength=self.img_sidelength)
+        depth = depth.reshape(1, -1).transpose(1, 0)
+
+        # pose
         pose = data_util.load_pose(self.pose_paths[idx])
 
         if self.has_params:
@@ -90,6 +102,7 @@ class SceneInstanceDataset():
         sample = {
             "instance_idx": torch.Tensor([self.instance_idx]).squeeze(),
             "rgb": torch.from_numpy(rgb).float(),
+            "depth": torch.from_numpy(depth).float(),
             "pose": torch.from_numpy(pose).float(),
             "uv": uv,
             "param": torch.from_numpy(params).float(),
@@ -186,7 +199,8 @@ class SceneClassDataset(torch.utils.data.Dataset):
                 len(self.all_instances[obj_idx]))])
 
         ground_truth = [{
-            'rgb': ray_bundle['rgb']
+            'rgb': ray_bundle['rgb'],
+            'depth': ray_bundle['depth']
         } for ray_bundle in observations]
 
         return observations, ground_truth
