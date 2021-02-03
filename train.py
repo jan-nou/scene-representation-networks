@@ -73,9 +73,9 @@ p.add_argument(
 p.add_argument(
     '--reg_weight',
     type=float,
-    default=1e-1,
+    default=1e-3,
     help='Weight for depth regularization term (lambda_depth in paper).')
-p.add_argument('--depth_weight', type=float, default=2000)
+p.add_argument('--depth_weight', type=float, default=200)
 
 p.add_argument('--steps_til_ckpt',
                type=int,

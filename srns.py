@@ -137,6 +137,7 @@ class SRNsModel(nn.Module):
                 as_tuple=True)]
             relevant_pred_depth = pred_depth[i].squeeze()[
                 elem.squeeze().nonzero(as_tuple=True)]
+
             loss = loss + self.l2_loss(relevant_gt_depth, relevant_pred_depth)
 
         return loss

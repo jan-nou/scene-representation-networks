@@ -16,28 +16,54 @@ def load_rgb(path, sidelength=None):
     img = square_crop_img(img)
 
     if sidelength is not None:
-        img = cv2.resize(img, (sidelength, sidelength), interpolation=cv2.INTER_AREA)
+        img = cv2.resize(img, (sidelength, sidelength),
+                         interpolation=cv2.INTER_AREA)
 
     img -= 0.5
     img *= 2.
     img = img.transpose(2, 0, 1)
+
+    return img
+
+
+def convert_uint16_to_depth(
+        img, scaling=.1):  # should be inverse of data-generation-conversion
+
+    img = img.astype(np.float) / 65535.
+
+    # check if valid
+    if np.amin(img) < 0.:
+        print(
+            "image has invalid depth value(s) ({}), which are smaller than 0!".
+            format(np.amin(img)))
+    if np.amax(img) > 1.:
+        print(
+            "image has invalid depth value(s) ({}), which are greater than 1!".
+            format(np.amax(img)))
+
+    # apply inverse scaling
+    img /= scaling
+
     return img
 
 
 def load_depth(path, sidelength=None):
-    img = cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.float32)
+    img = cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.uint16)
 
     if sidelength is not None:
-        img = cv2.resize(img, (sidelength, sidelength), interpolation=cv2.INTER_NEAREST)
+        img = cv2.resize(img, (sidelength, sidelength),
+                         interpolation=cv2.INTER_NEAREST)
 
-    img *= 1e-4
+    #img *= 1e-4
+    # if len(img.shape) == 3:
+    #     img = img[:, :, :1]
+    #     img = img.transpose(2, 0, 1)
+    # else:
+    #     img = img[None, :, :]
 
-    if len(img.shape) == 3:
-        img = img[:, :, :1]
-        img = img.transpose(2, 0, 1)
-    else:
-        img = img[None, :, :]
-    return img
+    depth_img = convert_uint16_to_depth(img)
+
+    return depth_img
 
 
 def load_pose(filename):
@@ -48,14 +74,16 @@ def load_pose(filename):
             pose[i // 4, i % 4] = lines[0].split(" ")[i]
         return pose.squeeze()
     else:
-        lines = [[x[0], x[1], x[2], x[3]] for x in (x.split(" ") for x in lines[:4])]
+        lines = [[x[0], x[1], x[2], x[3]]
+                 for x in (x.split(" ") for x in lines[:4])]
         return np.asarray(lines).astype(np.float32).squeeze()
 
 
 def load_params(filename):
     lines = open(filename).read().splitlines()
 
-    params = np.array([float(x) for x in lines[0].split()]).astype(np.float32).squeeze()
+    params = np.array([float(x) for x in lines[0].split()
+                       ]).astype(np.float32).squeeze()
     return params
 
 
@@ -68,14 +96,16 @@ def square_crop_img(img):
     min_dim = np.amin(img.shape[:2])
     center_coord = np.array(img.shape[:2]) // 2
     img = img[center_coord[0] - min_dim // 2:center_coord[0] + min_dim // 2,
-          center_coord[1] - min_dim // 2:center_coord[1] + min_dim // 2]
+              center_coord[1] - min_dim // 2:center_coord[1] + min_dim // 2]
     return img
 
 
 def train_val_split(object_dir, train_dir, val_dir):
     dirs = [os.path.join(object_dir, x) for x in ['pose', 'rgb', 'depth']]
-    data_lists = [sorted(glob(os.path.join(dir, x)))
-                  for dir, x in zip(dirs, ['*.txt', "*.png", "*.png"])]
+    data_lists = [
+        sorted(glob(os.path.join(dir, x)))
+        for dir, x in zip(dirs, ['*.txt', "*.png", "*.png"])
+    ]
 
     cond_mkdir(train_dir)
     cond_mkdir(val_dir)
@@ -83,18 +113,28 @@ def train_val_split(object_dir, train_dir, val_dir):
     [cond_mkdir(os.path.join(train_dir, x)) for x in ['pose', 'rgb', 'depth']]
     [cond_mkdir(os.path.join(val_dir, x)) for x in ['pose', 'rgb', 'depth']]
 
-    shutil.copy(os.path.join(object_dir, 'intrinsics.txt'), os.path.join(val_dir, 'intrinsics.txt'))
-    shutil.copy(os.path.join(object_dir, 'intrinsics.txt'), os.path.join(train_dir, 'intrinsics.txt'))
+    shutil.copy(os.path.join(object_dir, 'intrinsics.txt'),
+                os.path.join(val_dir, 'intrinsics.txt'))
+    shutil.copy(os.path.join(object_dir, 'intrinsics.txt'),
+                os.path.join(train_dir, 'intrinsics.txt'))
 
-    for data_name, data_ending, data_list in zip(['pose', 'rgb', 'depth'], ['.txt', '.png', '.png'], data_lists):
+    for data_name, data_ending, data_list in zip(['pose', 'rgb', 'depth'],
+                                                 ['.txt', '.png', '.png'],
+                                                 data_lists):
         val_counter = 0
         train_counter = 0
         for i, item in enumerate(data_list):
             if not i % 3:
-                shutil.copy(item, os.path.join(train_dir, data_name, "%06d" % train_counter + data_ending))
+                shutil.copy(
+                    item,
+                    os.path.join(train_dir, data_name,
+                                 "%06d" % train_counter + data_ending))
                 train_counter += 1
             else:
-                shutil.copy(item, os.path.join(val_dir, data_name, "%06d" % val_counter + data_ending))
+                shutil.copy(
+                    item,
+                    os.path.join(val_dir, data_name,
+                                 "%06d" % val_counter + data_ending))
                 val_counter += 1
 
 
@@ -128,17 +168,23 @@ def shapenet_train_test_split(shapenet_path, synset_id, name, csv_path):
     test = synset_df[synset_df['split'] == 'test']
     print(len(train), len(val), len(test))
 
-    train_path, val_path, test_path = [os.path.join(shapenet_path, str(synset_id) + '_' + name + '_' + x)
-                                       for x in ['train', 'val', 'test']]
+    train_path, val_path, test_path = [
+        os.path.join(shapenet_path,
+                     str(synset_id) + '_' + name + '_' + x)
+        for x in ['train', 'val', 'test']
+    ]
     cond_mkdir(train_path)
     cond_mkdir(val_path)
     cond_mkdir(test_path)
 
-    for split_df, trgt_path in zip([train, val, test], [train_path, val_path, test_path]):
+    for split_df, trgt_path in zip([train, val, test],
+                                   [train_path, val_path, test_path]):
         for row_no, row in split_df.iterrows():
             try:
-                shutil.copytree(os.path.join(shapenet_path, str(synset_id), str(row.modelId)),
-                                os.path.join(shapenet_path, trgt_path, str(row.modelId)))
+                shutil.copytree(
+                    os.path.join(shapenet_path, str(synset_id),
+                                 str(row.modelId)),
+                    os.path.join(shapenet_path, trgt_path, str(row.modelId)))
             except FileNotFoundError:
                 print("%s does not exist" % str(row.modelId))
 
@@ -146,11 +192,13 @@ def shapenet_train_test_split(shapenet_path, synset_id, name, csv_path):
 def transform_viewpoint(v):
     """Transforms the viewpoint vector into a consistent representation"""
 
-    return np.concatenate([v[:, :3],
-                           np.cos(v[:, 3:4]),
-                           np.sin(v[:, 3:4]),
-                           np.cos(v[:, 4:5]),
-                           np.sin(v[:, 4:5])], 1)
+    return np.concatenate([
+        v[:, :3],
+        np.cos(v[:, 3:4]),
+        np.sin(v[:, 3:4]),
+        np.cos(v[:, 4:5]),
+        np.sin(v[:, 4:5])
+    ], 1)
 
 
 def euler2mat(z=0, y=0, x=0):
@@ -158,24 +206,15 @@ def euler2mat(z=0, y=0, x=0):
     if z:
         cosz = np.cos(z)
         sinz = np.sin(z)
-        Ms.append(np.array(
-            [[cosz, -sinz, 0],
-             [sinz, cosz, 0],
-             [0, 0, 1]]))
+        Ms.append(np.array([[cosz, -sinz, 0], [sinz, cosz, 0], [0, 0, 1]]))
     if y:
         cosy = np.cos(y)
         siny = np.sin(y)
-        Ms.append(np.array(
-            [[cosy, 0, siny],
-             [0, 1, 0],
-             [-siny, 0, cosy]]))
+        Ms.append(np.array([[cosy, 0, siny], [0, 1, 0], [-siny, 0, cosy]]))
     if x:
         cosx = np.cos(x)
         sinx = np.sin(x)
-        Ms.append(np.array(
-            [[1, 0, 0],
-             [0, cosx, -sinx],
-             [0, sinx, cosx]]))
+        Ms.append(np.array([[1, 0, 0], [0, cosx, -sinx], [0, sinx, cosx]]))
     if Ms:
         return functools.reduce(np.dot, Ms[::-1])
     return np.eye(3)
